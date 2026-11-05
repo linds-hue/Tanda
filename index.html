@@ -36,6 +36,15 @@ h1{font:700 clamp(26px,4vw,36px)/1.15 Cambria,Georgia,serif;color:var(--ink);mar
 #page{font:20px/1.75 Cambria,Georgia,serif;max-width:110ch}
 #page p{margin:0 0 1.1em;white-space:pre-wrap}
 #rm,#ocr{margin:0 0 12px;font-size:14px;padding:4px 10px}
+#hint:empty{display:none}
+#tov{position:fixed;inset:0;z-index:205}
+#tsp{position:fixed;z-index:210;border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.6);outline:3px solid #f4b731;pointer-events:none;transition:top .25s ease,left .25s ease,width .25s ease,height .25s ease}
+#tcard{position:fixed;z-index:220;width:min(340px,calc(100vw - 24px));background:var(--sf);color:var(--tx);border:1px solid var(--ln);border-radius:12px;padding:14px 16px 14px;box-shadow:0 14px 34px rgba(0,0,0,.4)}
+#tcard .tk{margin:0 0 4px;font-size:13px;color:var(--mu)}
+#tcard h3{margin:0 0 6px;font:700 20px/1.25 Cambria,Georgia,serif;color:var(--ink)}
+#tcard .tx{margin:0 0 14px;font-size:16px;line-height:1.5}
+#tcard .tr{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+#tcard .tl{margin-right:auto;font:inherit;font-size:14px;background:none;border:0;color:var(--mu);text-decoration:underline;cursor:pointer;padding:4px 0}
 #sp{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .6s ease;animation:spOut .5s ease 4.2s forwards;cursor:pointer}
 #sp.out{opacity:0;pointer-events:none}
 .spl{filter:drop-shadow(0 8px 16px rgba(0,0,0,.22));animation:spPop .8s cubic-bezier(.2,1.5,.4,1) both}
@@ -116,6 +125,7 @@ dialog .row{margin-top:10px;justify-content:flex-end}
   <label><span style="position:absolute;left:-9999px">Choose a reading</span><select id="rsel"></select></label>
   <label class="btn" for="up">Add reading</label><input id="up" type="file" hidden>
   <button class="btn" id="th" aria-label="Switch between light and dark theme">Light or dark</button>
+<button class="btn" id="tourbtn" aria-label="Take a quick tour of Tanda">? Tour</button>
 </header>
 <main class="wrap">
   <section class="rd">
@@ -127,6 +137,7 @@ dialog .row{margin-top:10px;justify-content:flex-end}
     <div class="chips" id="chips" role="group" aria-label="Highlight meanings"></div>
     <div class="zm" id="zm" hidden><button class="btn" id="zo" aria-label="Zoom out">−</button><span id="zl">100%</span><button class="btn" id="zi" aria-label="Zoom in">+</button><button class="btn" id="zf">Fit width</button></div>
     <div id="page"></div>
+
     <div id="pdfbox" hidden></div>
     <div id="docbox" hidden></div><div id="docsty" hidden></div>
     <div id="imgbox" hidden></div>
@@ -244,7 +255,7 @@ function render(){
   const r=rd(),ty=r.type,t=ty==='text';
   $('#lab').textContent=r.label;$('#ttl').textContent=r.title;$('#rm').hidden=!(r.mine||r.up);$('#sbt').textContent='On: '+r.title;
   $('#page').hidden=ty!=='text';$('#imgbox').hidden=ty!=='image';$('#pdfbox').hidden=ty!=='pdf';$('#docbox').hidden=ty!=='docx';$('#zm').hidden=!(ty==='pdf'||ty==='docx');$('#ocr').hidden=!r.scanned;$('#zl').textContent=Math.round((ZM[ty]||1)*100)+'%';
-  $('#hint').textContent=ty==='image'||r.scanned?'Pick a color, then drag over the page to mark an area. Tap an area to open its note.':'Select words to highlight them in a color, then tap a highlight to open its note.';
+  $('#hint').textContent=r.id==='r0'?'':(ty==='image'||r.scanned?'Pick a color, then drag over the page to mark an area. Tap an area to open its note.':'Select words to highlight them in a color, then tap a highlight to open its note.');
   ({text:renderText,image:renderImg,pdf:renderPdf,docx:renderDocx})[ty](r);chipSync();renderList();
 }
 function renderText(r){
@@ -644,6 +655,76 @@ function syncPen(){document.querySelectorAll('#pw [data-w]').forEach(b=>b.setAtt
 document.querySelectorAll('#pw [data-w]').forEach(b=>{b.onclick=()=>{PEN=+b.dataset.w;S.pen=PEN;save();syncPen()}});
 syncPen();
 applyMin();fillSel();render();loadR();
+
+/* guided tour */
+const TOUR=[
+ {t:'Welcome to Tanda',x:'Let’s take a quick tour of the app. It takes less than a minute.'},
+ {el:()=>$('#rsel'),t:'Pick a reading',x:'Switch between readings here. The letter, a sample essay, and a sample image are ready for you.'},
+ {el:()=>document.querySelector('label[for="up"]'),t:'Add your own reading',x:'Bring in a PDF, Word file, text file, web page, or image to mark up.'},
+ {el:()=>$('#page'),t:'Highlight words',x:'Select any words, then tap a color in the small bar that appears. On images and scans, drag a box over the area instead.'},
+ {el:()=>$('#chips'),t:'Colors have meanings',x:'Each color stands for something, like Key term or Definition. Tap Edit colors to rename them or pick your own.'},
+ {el:()=>$('.sb'),t:'Your notes live here',x:'Every highlight becomes a note. Tap a highlight to open its sticky note, where you can type or write by hand with Pen, and add tags. Search and filter notes here, and tap one to jump back to it.'},
+ {el:()=>$('#ex'),t:'Export your notes',x:'Copy all your notes as text, including your handwriting turned into typed words.'},
+ {el:()=>$('#th'),t:'Light or dark',x:'Change the look to whatever is easiest on your eyes.'},
+ {t:'You’re ready',x:'Tap “? Tour” in the top bar any time to see this again. Happy reading!'}
+];
+let ti=-1;
+function tourPlace(){
+  if(ti<0)return;
+  const s=TOUR[ti],c=$('#tcard'),sp=$('#tsp'),ov=$('#tov');if(!c)return;
+  let r=null;const el=s.el&&s.el();
+  if(el){const b=el.getBoundingClientRect();if(b.width>0&&b.height>0)r=b}
+  const vw=innerWidth,vh=innerHeight,cw=c.offsetWidth,ch=c.offsetHeight,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+  if(!r){sp.style.display='none';ov.style.background='rgba(0,0,0,.6)';c.style.left=cl((vw-cw)/2,12,vw)+'px';c.style.top=cl((vh-ch)/2,12,vh)+'px';return}
+  sp.style.display='block';ov.style.background='transparent';
+  const top=Math.max(4,r.top-6),left=Math.max(4,r.left-6),bottom=Math.min(vh-4,r.bottom+6),right=Math.min(vw-4,r.right+6);
+  Object.assign(sp.style,{top:top+'px',left:left+'px',width:(right-left)+'px',height:(bottom-top)+'px'});
+  let x,y;const g=14;
+  if(vw<=700){x=(vw-cw)/2;y=vh-ch-12}
+  else if(vh-bottom>=ch+g+8){y=bottom+g;x=left+(right-left)/2-cw/2}
+  else if(top>=ch+g+8){y=top-ch-g;x=left+(right-left)/2-cw/2}
+  else if(left>=cw+g+8){x=left-cw-g;y=top}
+  else if(vw-right>=cw+g+8){x=right+g;y=top}
+  else{x=(vw-cw)/2;y=vh-ch-16}
+  c.style.left=cl(x,12,vw-cw-12)+'px';c.style.top=cl(y,12,vh-ch-12)+'px';
+}
+function tourShow(n){
+  ti=n;const s=TOUR[n],c=$('#tcard'),last=n===TOUR.length-1;
+  c.innerHTML='';
+  const row=mk('div','tr'),sk=mk('button','tl','Skip tour'),bk=mk('button','btn','Back'),nx=mk('button','btn pri',last?'Done':'Next');
+  sk.onclick=tourEnd;bk.onclick=()=>tourShow(ti-1);nx.onclick=()=>last?tourEnd():tourShow(ti+1);
+  if(last)sk.hidden=true;if(n===0)bk.hidden=true;
+  row.append(sk,bk,nx);
+  c.append(mk('p','tk',(n+1)+' of '+TOUR.length),mk('h3',0,s.t),mk('p','tx',s.x),row);
+  const el=s.el&&s.el();
+  if(el&&el.getBoundingClientRect().width>0)el.scrollIntoView({block:innerWidth<=700?'start':'nearest'});
+  tourPlace();nx.focus({preventScroll:true});
+}
+function tourKey(e){
+  if(e.key==='Escape')tourEnd();
+  else if(e.key==='ArrowRight'&&ti<TOUR.length-1)tourShow(ti+1);
+  else if(e.key==='ArrowLeft'&&ti>0)tourShow(ti-1);
+}
+function tourEnd(){
+  ['tov','tsp','tcard'].forEach(i=>{const e=$('#'+i);if(e)e.remove()});
+  ti=-1;removeEventListener('keydown',tourKey);removeEventListener('resize',tourPlace);removeEventListener('scroll',tourPlace,true);
+  try{localStorage.setItem('tanda:tour','1')}catch(e){}
+}
+function tourStart(){
+  if(ti>=0)return;
+  hidePop();$('#pal').hidden=true;
+  ['tov','tsp','tcard'].forEach(i=>{const d=mk('div');d.id=i;document.body.append(d)});
+  $('#tcard').setAttribute('role','dialog');$('#tcard').setAttribute('aria-label','Tanda tour');
+  addEventListener('keydown',tourKey);addEventListener('resize',tourPlace);addEventListener('scroll',tourPlace,true);
+  tourShow(0);
+}
+$('#tourbtn').onclick=tourStart;
+(function waitSp(n){
+  const sp=document.getElementById('sp');
+  if(sp&&getComputedStyle(sp).visibility!=='hidden'&&n<60)return setTimeout(()=>waitSp(n+1),300);
+  let seen='';try{seen=localStorage.getItem('tanda:tour')}catch(e){}
+  if(!seen)setTimeout(tourStart,300);
+})(0);
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}
 </script>
 </body>
